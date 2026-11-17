@@ -103,27 +103,32 @@ async function load(){
   tex.colorSpace=THREE.SRGBColorSpace;earthMat.map=tex;earthMat.needsUpdate=true;if(cloudTex){cloudTex.colorSpace=THREE.SRGBColorSpace;cloudMat.map=cloudTex;cloudMat.needsUpdate=true}
  }catch(e){toast('Earth texture unavailable — check internet connection')}
  try{
-  const [worldRes,baseRes,extraRes]=await Promise.all([
+  // Country facts are loaded from a public static dataset, not the retired REST Countries v3.1 API.
+  // The static file avoids API keys, browser-origin allowlists and API rate limits.
+  const [worldRes,dataRes]=await Promise.all([
    fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json'),
-   // REST Countries v3.1 accepts at most 10 fields per request.
-   fetch('https://restcountries.com/v3.1/all?fields=name,cca2,cca3,ccn3,capital,population,area,region,subregion,flag'),
-   fetch('https://restcountries.com/v3.1/all?fields=cca3,currencies,languages,idd,timezones,latlng')
+   fetch('https://raw.githubusercontent.com/mledoze/countries/master/countries.json')
   ]);
-  if(!worldRes.ok)throw new Error('World boundary data unavailable (HTTP '+worldRes.status+')');
-  if(!baseRes.ok)throw new Error('Country list API error (HTTP '+baseRes.status+')');
-  if(!extraRes.ok)throw new Error('Country detail API error (HTTP '+extraRes.status+')');
-  const topo=await worldRes.json(),baseData=await baseRes.json(),extraData=await extraRes.json();
+  if(!worldRes.ok)throw new Error('World boundary file failed (HTTP '+worldRes.status+'). Check CDN access.');
+  if(!dataRes.ok)throw new Error('Static country dataset failed (HTTP '+dataRes.status+'). Check GitHub access.');
+  const topo=await worldRes.json(),data=await dataRes.json();
   const topojson=await import('https://cdn.jsdelivr.net/npm/topojson-client@3/+esm');
   const features=topojson.feature(topo,topo.objects.countries).features;
   features.forEach(addFeature);
-  const extraByCode=new Map(extraData.map(c=>[c.cca3,c]));
-  countries=baseData.map(c=>({...c,...(extraByCode.get(c.cca3)||{})}))
-    .sort((a,b)=>(a.name?.common||'').localeCompare(b.name?.common||''));
+  countries=data.map(c=>({
+    ...c,
+    flag:c.flag||'🏳️',
+    currencies:c.currencies||{},
+    languages:c.languages||{},
+    idd:c.idd||{},
+    timezones:c.timezones||[],
+    latlng:c.latlng||[]
+  })).sort((a,b)=>(a.name?.common||'').localeCompare(b.name?.common||''));
   countries.forEach(c=>{const code=c.ccn3||c.cca3;if(code)countryInfo.set(String(code).padStart(3,'0'),c);});
   $('status').textContent=`${features.length} COUNTRY SHAPES · LIVE ATLAS DATA`;
   $('loading').classList.add('hide');setTimeout(()=>$('loading').remove(),600);
   $('countrySearch').addEventListener('input',renderResults);renderResults();
- }catch(e){$('status').textContent='DATA CONNECTION ERROR';$('loading').innerHTML='<div class="loader">Could not load country data.<br><small>'+String(e.message||e)+'<br>Check internet connection, then refresh.</small></div>';console.error(e)}
+ }catch(e){$('status').textContent='DATA FILE CONNECTION ERROR';$('loading').innerHTML='<div class="loader">Could not load country data.<br><small>'+String(e.message||e)+'<br>Check internet connection, then refresh.</small></div>';console.error(e)}
 }
 function renderResults(){const q=$('countrySearch').value.trim().toLowerCase();const list=q?countries.filter(c=>(c.name?.common||'').toLowerCase().includes(q)||(c.capital||[]).some(x=>x.toLowerCase().includes(q))).slice(0,9):[];$('results').innerHTML='';list.forEach(c=>{const b=document.createElement('button');b.className='result';b.innerHTML=`<span>${c.flag||'🏳️'} ${c.name.common}</span><span class="muted">↗</span>`;b.onclick=()=>{focusCountry(c);$('results').innerHTML='';$('countrySearch').value=c.name.common};$('results').appendChild(b)})}
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down=null;
