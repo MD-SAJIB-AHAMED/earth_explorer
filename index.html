@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth Explorer — Interactive 3D Globe</title>
+<style>
+:root{color-scheme:dark;--bg:#050b16;--panel:rgba(9,20,37,.88);--line:rgba(132,180,226,.2);--muted:#9bb0c9;--cyan:#55d9ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% 42%,#102641 0,#071323 45%,#030812 100%);color:#eaf5ff;font:14px/1.45 Inter,system-ui,Segoe UI,Arial,sans-serif;overflow:hidden}
+#scene{position:fixed;inset:0}canvas{display:block}
+.topbar{position:fixed;top:18px;left:20px;right:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;pointer-events:none}
+.brand,.top-actions{pointer-events:auto}.brand{display:flex;align-items:center;gap:11px}.brand-mark{width:38px;height:38px;border:1px solid #5bdcff;border-radius:50%;display:grid;place-items:center;color:#6ce3ff;box-shadow:0 0 24px #35bfff33;font-size:20px}.brand strong{letter-spacing:.13em;font-size:13px}.brand small{display:block;color:var(--muted);font-size:10px;letter-spacing:.16em}
+.top-actions{display:flex;gap:8px}.glass{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(16px);border-radius:12px;box-shadow:0 12px 40px #0005}
+button,input{font:inherit;color:inherit}button{border:1px solid var(--line);background:#10243b;border-radius:9px;padding:9px 12px;cursor:pointer}button:hover{border-color:#55d9ff;color:#8beaff}button.active{background:#124365;border-color:#55d9ff;color:#8beaff}
+.search{position:fixed;top:82px;left:20px;width:min(310px,calc(100vw - 40px));padding:12px}.search label,.eyebrow{font-size:10px;color:#81a5c8;letter-spacing:.16em;text-transform:uppercase}.search input{width:100%;margin-top:8px;background:#071323;border:1px solid var(--line);border-radius:9px;padding:11px;outline:none}.search input:focus{border-color:var(--cyan)}
+.results{max-height:230px;overflow:auto;margin-top:6px}.result{display:flex;justify-content:space-between;width:100%;text-align:left;background:transparent;border:0;border-radius:7px;padding:8px}.result:hover{background:#17304b}
+.info{position:fixed;right:20px;top:82px;width:300px;padding:17px;max-height:calc(100vh - 110px);overflow:auto}.info h2{font-size:21px;margin:5px 0 2px}.flag{font-size:32px}.muted{color:var(--muted)}.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:15px}.stat{padding:10px;background:#0a192b;border:1px solid #17334d;border-radius:9px}.stat small{display:block;color:#88a5c3;font-size:10px;text-transform:uppercase;letter-spacing:.1em}.stat b{display:block;margin-top:4px;font-size:13px;overflow-wrap:anywhere}.info hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.controls{position:fixed;left:20px;bottom:20px;padding:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:calc(100vw - 40px)}.hint{position:fixed;bottom:24px;right:20px;color:#8fa8c2;font-size:11px;text-align:right;pointer-events:none}
+.status{position:fixed;top:19px;left:50%;transform:translateX(-50%);font-size:11px;color:#8ba9c7;background:#061323aa;padding:7px 12px;border:1px solid var(--line);border-radius:20px;pointer-events:none}
+.loading{position:fixed;inset:0;display:grid;place-items:center;background:#030812;z-index:10;transition:opacity .5s}.loading.hide{opacity:0;pointer-events:none}.loader{text-align:center;color:#a9c9e5}.spinner{width:44px;height:44px;border:2px solid #24425d;border-top-color:#5bdcff;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 14px}@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:88px;transform:translateX(-50%);background:#10243b;border:1px solid var(--line);padding:9px 14px;border-radius:9px;color:#bfeeff;opacity:0;transition:.2s;pointer-events:none}.toast.show{opacity:1}
+@media(max-width:760px){.topbar{top:12px;left:12px;right:12px}.brand strong{font-size:11px}.brand small{font-size:9px}.status{top:58px;font-size:9px}.search{top:100px;left:12px;width:calc(100vw - 24px);padding:9px}.search input{padding:9px}.results{max-height:120px}.info{top:auto;bottom:90px;right:12px;width:min(270px,calc(100vw - 24px));max-height:34vh;padding:12px}.info h2{font-size:17px}.stat-grid{gap:5px;margin-top:9px}.stat{padding:7px}.stat b{font-size:11px}.controls{left:12px;bottom:12px;max-width:calc(100vw - 24px);padding:8px;gap:5px}.controls button{padding:7px 9px;font-size:11px}.hint{display:none}.top-actions button{padding:7px 9px;font-size:11px}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="scene"></div>
+<div class="loading" id="loading"><div class="loader"><div class="spinner"></div><b>INITIALIZING EARTH SYSTEM</b><div style="font-size:11px;margin-top:6px">Loading globe textures and country data…</div></div></div>
+<header class="topbar">
+  <div class="brand"><div class="brand-mark">◎</div><div><strong>EARTH EXPLORER</strong><small>INTERACTIVE PLANETARY ATLAS</small></div></div>
+  <div class="status" id="status">CONNECTING TO EARTH DATA</div>
+  <div class="top-actions"><button id="autoBtn" class="active">⟳ Auto rotate</button><button id="homeBtn">⌂ Reset</button></div>
+</header>
+<section class="search glass">
+  <label for="countrySearch">Find a country</label>
+  <input id="countrySearch" type="search" placeholder="Search country or capital…" autocomplete="off">
+  <div class="results" id="results"></div>
+</section>
+<aside class="info glass">
+  <div class="eyebrow">Selected location</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:8px"><div class="flag" id="flag">🌍</div><div><h2 id="countryName">Earth</h2><div class="muted" id="countryRegion">Select a country on the globe</div></div></div>
+  <hr>
+  <div class="stat-grid">
+    <div class="stat"><small>Capital</small><b id="capital">—</b></div>
+    <div class="stat"><small>Population</small><b id="population">—</b></div>
+    <div class="stat"><small>Area</small><b id="area">—</b></div>
+    <div class="stat"><small>Currency</small><b id="currency">—</b></div>
+    <div class="stat"><small>Languages</small><b id="languages">—</b></div>
+    <div class="stat"><small>Calling code</small><b id="calling">—</b></div>
+  </div>
+  <div class="muted" id="extra" style="margin-top:12px;font-size:11px">Drag to rotate • Scroll or pinch to zoom</div>
+</aside>
+<div class="controls glass">
+  <button id="dayBtn" class="active">☀ Day</button><button id="nightBtn">☾ Night</button><button id="bordersBtn" class="active">⌗ Borders</button><button id="starsBtn" class="active">✦ Stars</button>
+</div>
+<div class="hint">DRAG TO ROTATE · SCROLL TO ZOOM<br>CLICK A COUNTRY TO EXPLORE</div>
+<div class="toast" id="toast"></div>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {MeshoptDecoder} from 'three/addons/libs/meshopt_decoder.module.js';
+
+const $=id=>document.getElementById(id);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,1000);
+camera.position.set(0,0,3.25);
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
+$('scene').appendChild(renderer.domElement);
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true;controls.dampingFactor=.055;controls.minDistance=1.55;controls.maxDistance=8;controls.rotateSpeed=.55;controls.zoomSpeed=.8;
+const root=new THREE.Group();scene.add(root);
+const R=1;
+scene.add(new THREE.AmbientLight(0x7896bd,.72));
+const sun=new THREE.DirectionalLight(0xffffff,2.35);sun.position.set(5,2,5);scene.add(sun);
+const fill=new THREE.DirectionalLight(0x3e7bb7,.32);fill.position.set(-5,-1,-4);scene.add(fill);
+const loader=new THREE.TextureLoader();loader.setCrossOrigin('anonymous');
+const earthMat=new THREE.MeshPhongMaterial({color:0xffffff,specular:0x263b55,shininess:10});
+const earth=new THREE.Mesh(new THREE.SphereGeometry(R,96,96),earthMat);root.add(earth);
+const cloudMat=new THREE.MeshPhongMaterial({transparent:true,opacity:.18,depthWrite:false});
+const clouds=new THREE.Mesh(new THREE.SphereGeometry(1.006,64,64),cloudMat);root.add(clouds);
+const atmosphere=new THREE.Mesh(new THREE.SphereGeometry(1.035,64,64),new THREE.ShaderMaterial({vertexShader:`varying vec3 vNormal;varying vec3 vView;void main(){vNormal=normalize(normalMatrix*normal);vec4 mv=modelViewMatrix*vec4(position,1.);vView=-mv.xyz;gl_Position=projectionMatrix*mv;}`,fragmentShader:`varying vec3 vNormal;varying vec3 vView;void main(){float i=pow(0.72-max(dot(normalize(vNormal),normalize(vView)),0.),3.);gl_FragColor=vec4(0.18,0.62,1.,i*0.85);}`,blending:THREE.AdditiveBlending,side:THREE.BackSide,transparent:true,depthWrite:false}));root.add(atmosphere);
+const starGeo=new THREE.BufferGeometry();const starPos=[];for(let i=0;i<2400;i++){const v=new THREE.Vector3().randomDirection().multiplyScalar(30+Math.random()*70);starPos.push(v.x,v.y,v.z)}starGeo.setAttribute('position',new THREE.Float32BufferAttribute(starPos,3));
+const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xc4ddff,size:.12,sizeAttenuation:true}));scene.add(stars);
+let borderGroup=new THREE.Group();root.add(borderGroup);let countryMeshes=[];let countries=[],countryInfo=new Map();let selected=null;let autoRotate=true,bordersVisible=true,starsVisible=true,dayMode=true;
+const map=lonlat=>{const lon=lonlat[0]*Math.PI/180,lat=lonlat[1]*Math.PI/180;return new THREE.Vector3(-Math.cos(lat)*Math.sin(lon),Math.sin(lat),Math.cos(lat)*Math.cos(lon)).multiplyScalar(1.003)};
+function ringLine(coords,material){const pts=coords.map(map);if(pts.length<2)return;const geo=new THREE.BufferGeometry().setFromPoints(pts);const line=new THREE.Line(geo,material);borderGroup.add(line)}
+function polygonMesh(ring,code){if(!ring||ring.length<4)return;const shape=new THREE.Shape();shape.moveTo(ring[0][0],ring[0][1]);for(let i=1;i<ring.length;i++)shape.lineTo(ring[i][0],ring[i][1]);shape.closePath();const geo=new THREE.ShapeGeometry(shape,1);const p=geo.attributes.position;for(let i=0;i<p.count;i++){const v=map([p.getX(i),p.getY(i)]);p.setXYZ(i,v.x,v.y,v.z)}geo.computeVertexNormals();const mat=new THREE.MeshBasicMaterial({color:0x40cfff,transparent:true,opacity:.045,side:THREE.DoubleSide,depthWrite:false});const mesh=new THREE.Mesh(geo,mat);mesh.userData.code=code;mesh.userData.baseColor=0x40cfff;borderGroup.add(mesh);countryMeshes.push(mesh)}
+function addFeature(feature){const g=feature.geometry;if(!g)return;const code=String(feature.id).padStart(3,'0');const polys=g.type==='Polygon'?[g.coordinates]:g.type==='MultiPolygon'?g.coordinates:[];for(const poly of polys){if(poly[0]){polygonMesh(poly[0],code);ringLine(poly[0],new THREE.LineBasicMaterial({color:0x65cfff,transparent:true,opacity:.48}))}}}
+function fmt(n){if(n==null)return '—';return new Intl.NumberFormat('en-US',{notation:n>999999? 'compact':'standard',maximumFractionDigits:1}).format(n)}
+function showCountry(info,code){selected=code;$('flag').textContent=info?.flag||'🏳️';$('countryName').textContent=info?.name||'Unknown country';$('countryRegion').textContent=[info?.region,info?.subregion].filter(Boolean).join(' · ')||'Country';$('capital').textContent=info?.capital?.join(', ')||'—';$('population').textContent=info?.population?fmt(info.population):'—';$('area').textContent=info?.area?fmt(info.area)+' km²':'—';$('currency').textContent=info?.currencies?Object.values(info.currencies).map(c=>c.name+' ('+c.symbol+')').join(', '):'—';$('languages').textContent=info?.languages?Object.values(info.languages).join(', '):'—';$('calling').textContent=info?.idd?(info.idd.root||'')+(info.idd.suffixes?.[0]||''):'—';$('extra').textContent=info?.name?`CCA3: ${info.cca3||'—'} · Time zones: ${(info.timezones||[]).slice(0,3).join(', ')}`:'Drag to rotate • Scroll or pinch to zoom';for(const m of countryMeshes){m.material.opacity=m.userData.code===code?.22:.045;m.material.color.set(m.userData.code===code?0xffcf5c:0x40cfff)}}
+function focusCountry(info){if(!info)return;const lat=info.latlng?.[0]||0,lon=info.latlng?.[1]||0;const target=map([lon,lat]).normalize().multiplyScalar(2.5);const dir=target.clone().normalize();const end=dir.multiplyScalar(2.65);camera.position.copy(end);controls.target.set(0,0,0);controls.update();showCountry(info,info.ccn3||info.ccn2||info.cca3)}
+function toast(msg){$('toast').textContent=msg;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2200)}
+async function load(){
+ try{
+  const [tex,cloudTex]=await Promise.all([
+   new Promise((res,rej)=>loader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg',res,undefined,rej)),
+   new Promise((res,rej)=>loader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png',res,undefined,rej)).catch(()=>null)
+  ]);
+  tex.colorSpace=THREE.SRGBColorSpace;earthMat.map=tex;earthMat.needsUpdate=true;if(cloudTex){cloudTex.colorSpace=THREE.SRGBColorSpace;cloudMat.map=cloudTex;cloudMat.needsUpdate=true}
+ }catch(e){toast('Earth texture unavailable — check internet connection')}
+ try{
+  const [worldRes,baseRes,extraRes]=await Promise.all([
+   fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json'),
+   // REST Countries v3.1 accepts at most 10 fields per request.
+   fetch('https://restcountries.com/v3.1/all?fields=name,cca2,cca3,ccn3,capital,population,area,region,subregion,flag'),
+   fetch('https://restcountries.com/v3.1/all?fields=cca3,currencies,languages,idd,timezones,latlng')
+  ]);
+  if(!worldRes.ok)throw new Error('World boundary data unavailable (HTTP '+worldRes.status+')');
+  if(!baseRes.ok)throw new Error('Country list API error (HTTP '+baseRes.status+')');
+  if(!extraRes.ok)throw new Error('Country detail API error (HTTP '+extraRes.status+')');
+  const topo=await worldRes.json(),baseData=await baseRes.json(),extraData=await extraRes.json();
+  const topojson=await import('https://cdn.jsdelivr.net/npm/topojson-client@3/+esm');
+  const features=topojson.feature(topo,topo.objects.countries).features;
+  features.forEach(addFeature);
+  const extraByCode=new Map(extraData.map(c=>[c.cca3,c]));
+  countries=baseData.map(c=>({...c,...(extraByCode.get(c.cca3)||{})}))
+    .sort((a,b)=>(a.name?.common||'').localeCompare(b.name?.common||''));
+  countries.forEach(c=>{const code=c.ccn3||c.cca3;if(code)countryInfo.set(String(code).padStart(3,'0'),c);});
+  $('status').textContent=`${features.length} COUNTRY SHAPES · LIVE ATLAS DATA`;
+  $('loading').classList.add('hide');setTimeout(()=>$('loading').remove(),600);
+  $('countrySearch').addEventListener('input',renderResults);renderResults();
+ }catch(e){$('status').textContent='DATA CONNECTION ERROR';$('loading').innerHTML='<div class="loader">Could not load country data.<br><small>'+String(e.message||e)+'<br>Check internet connection, then refresh.</small></div>';console.error(e)}
+}
+function renderResults(){const q=$('countrySearch').value.trim().toLowerCase();const list=q?countries.filter(c=>(c.name?.common||'').toLowerCase().includes(q)||(c.capital||[]).some(x=>x.toLowerCase().includes(q))).slice(0,9):[];$('results').innerHTML='';list.forEach(c=>{const b=document.createElement('button');b.className='result';b.innerHTML=`<span>${c.flag||'🏳️'} ${c.name.common}</span><span class="muted">↗</span>`;b.onclick=()=>{focusCountry(c);$('results').innerHTML='';$('countrySearch').value=c.name.common};$('results').appendChild(b)})}
+const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();let down=null;
+renderer.domElement.addEventListener('pointerdown',e=>down={x:e.clientX,y:e.clientY});
+renderer.domElement.addEventListener('pointerup',e=>{if(!down||Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)return;pointer.x=e.clientX/innerWidth*2-1;pointer.y=-(e.clientY/innerHeight)*2+1;raycaster.setFromCamera(pointer,camera);const hits=raycaster.intersectObjects(countryMeshes,false);if(hits.length){const code=hits[0].object.userData.code;const info=countryInfo.get(code);if(info)showCountry(info,code);else toast('Country details not available')}})
+$('autoBtn').onclick=()=>{autoRotate=!autoRotate;$('autoBtn').classList.toggle('active',autoRotate);toast(autoRotate?'Auto rotation on':'Auto rotation paused')};
+$('homeBtn').onclick=()=>{camera.position.set(0,0,3.25);controls.target.set(0,0,0);controls.update();showCountry(null,null);$('countryName').textContent='Earth';$('countryRegion').textContent='Select a country on the globe';$('flag').textContent='🌍'};
+$('bordersBtn').onclick=()=>{bordersVisible=!bordersVisible;borderGroup.visible=bordersVisible;$('bordersBtn').classList.toggle('active',bordersVisible)};
+$('starsBtn').onclick=()=>{starsVisible=!starsVisible;stars.visible=starsVisible;$('starsBtn').classList.toggle('active',starsVisible)};
+$('dayBtn').onclick=()=>{dayMode=true;sun.intensity=2.35;fill.intensity=.32;earthMat.color.set(0xffffff);$('dayBtn').classList.add('active');$('nightBtn').classList.remove('active')};
+$('nightBtn').onclick=()=>{dayMode=false;sun.intensity=.45;fill.intensity=.12;earthMat.color.set(0x8da6c7);$('nightBtn').classList.add('active');$('dayBtn').classList.remove('active')};
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2))});
+const clock=new THREE.Clock();function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();if(autoRotate)root.rotation.y+=dt*.035;clouds.rotation.y+=dt*.012;controls.update();renderer.render(scene,camera)}animate();load();
+</script>
+</body>
+</html>
